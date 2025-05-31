@@ -24,9 +24,23 @@ app.get("/login", (req, res) => {
     res.render("login");
 });
 
-app.get("/profile", isLogin, (req, res) => {
-    console.log(req.user);
-    res.render("login");
+// profile route
+app.get("/profile", isLogin, async (req, res) => {
+    let user = await userModel.findOne({email: req.user.email});
+    await user.populate("posts");
+    res.render("profile", {user});
+})
+
+app.post("/post", isLogin, async (req, res) => {
+    let user = await userModel.findOne({email: req.user.email});
+    let{content} = req.body;
+     let post = await postModel.create({
+       userId: user._id,
+       content
+    });
+    user.posts.push(post._id);
+    await user.save();
+    res.redirect("/profile");
 })
 
 
@@ -61,18 +75,21 @@ app.post("/register",async (req, res) => {
 app.post("/login",async (req, res) => {
     let { email, password } = req.body;
    let user = await userModel.findOne({email});
-   if(!user) return res.status(500).send("something went wrong");
+   if(!user) return res.status(500).send("User not found");
+    
    bcrypt.compare(password, user.password, (err, result) => {
-    if(!result) return res.status(500).send("something went wrong");
-    let token = jwt.sign({
-        email : email,
-        userid: user._id
-    },
-    "shhhh");
-    res.cookie("token", token);
-    res.send("User logged in successfully");
-   });
-   
+    if(result){
+        let token = jwt.sign({
+            email : email,
+            userid: user._id
+        },
+        "shhhh");
+        res.cookie("token", token);
+        res.status(200).redirect("/profile");
+    }else{
+        res.redirect("/login");
+    }
+   });   
    
 });
 
@@ -86,7 +103,7 @@ app.get("/logout", (req, res) => {
 // middleware for protected routes
 
 function isLogin(req, res, next) {
-    if(req.cookies.token === "") return res.send("You are not logged in");
+    if(req.cookies.token === "") return res.redirect("/login");
     else{
       let data =  jwt.verify(req.cookies.token, "shhhh");
       req.user = data;
